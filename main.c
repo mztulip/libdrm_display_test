@@ -228,6 +228,10 @@ int main(void)
         return 1;
     }
 
+    //https://dri.freedesktop.org/docs/drm/gpu/drm-uapi.html
+    //If set to 1, the DRM core will expose all planes (overlay, primary, and cursor) to userspace.
+    drmSetClientCap(drm_fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
+
     drmModeRes *res = drmModeGetResources(drm_fd);
     if (!res)
     {
