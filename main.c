@@ -12,15 +12,7 @@
 #include <xf86drmMode.h>
 #include <errno.h>
 
-#include "util.h"
 
-//Budowanie tego kodu
-// gcc main.c util.c -I/usr/include/libdrm -ldrm
-
-/*
- * Get the human-readable string from a DRM connector type.
- * This is compatible with Weston's connector naming.
- */
 const char *conn_str(uint32_t conn_type)
 {
 	switch (conn_type) {
@@ -47,13 +39,13 @@ const char *conn_str(uint32_t conn_type)
 
 struct dumb_framebuffer 
 {
-	uint32_t id;     // DRM object ID
+	uint32_t id; 
 	uint32_t width;
 	uint32_t height;
-	uint32_t handle; // driver-specific handle
-	uint64_t size;   // size of mapping
+	uint32_t handle;  
+	uint64_t size;   
 
-	uint8_t *data;   // mmapped data we can write to
+	uint8_t *data;    
 };
 
 struct connector {
@@ -132,17 +124,6 @@ bool create_fb(int drm_fd, uint32_t width, uint32_t height, struct dumb_framebuf
         goto error_dumb;
     }
 
-	// uint32_t handles[4] = { fb->handle };
-	// uint32_t strides[4] = { fb->stride };
-	// uint32_t offsets[4] = { 0 };
-
-	// ret = drmModeAddFB2(drm_fd, width, height, DRM_FORMAT_XRGB8888,
-	// 	handles, strides, offsets, &fb->id, 0);
-	// if (ret < 0) {
-	// 	perror("drmModeAddFB2");
-	// 	goto error_dumb;
-	// }
-
 	struct drm_mode_map_dumb map = { .handle = fb->handle };
 	ret = drmIoctl(drm_fd, DRM_IOCTL_MODE_MAP_DUMB, &map);
 	if (ret < 0) {
@@ -172,7 +153,7 @@ error_dumb:
 
 int main(void)
 {
-	int drm_fd = open("/dev/dri/card0", O_RDWR | O_NONBLOCK);
+	int drm_fd = open("/dev/dri/card1", O_RDWR | O_NONBLOCK);
 	if (drm_fd < 0) 
 	{
 		perror("/dev/dri/card0");
@@ -273,14 +254,13 @@ int main(void)
 
 		conn->crtc_id = find_crtc(drm_fd, res, drm_conn, &taken_crtcs);
 		if (!conn->crtc_id) {
-			fprintf(stderr, "Could not find CRTC for %s\n", conn->name);
+			fprintf(stderr, "\033[31mCould not find CRTC for %s\033[0m\n", conn->name);
 			conn->connected = false;
 			goto cleanup;
 		}
 
 		printf("  Using CRTC %"PRIu32"\n", conn->crtc_id);
 
-		// [0] is the best mode, so we'll just use that.
 		conn->mode = drm_conn->modes[0];
 
 		conn->width = conn->mode.hdisplay;
@@ -293,7 +273,7 @@ int main(void)
 		int ret = drmSetMaster(drm_fd);
 		if(ret)
 		{
-			printf("Could not get master role for DRM.\n");
+			printf("\033[31mCould not get master role for DRM.\033[0m\n");
 			goto cleanup;
 		}
 
@@ -306,9 +286,6 @@ int main(void)
 
 		printf("  Created frambuffer with ID %"PRIu32"\n", conn->fb.id);
 
-		
-
-		// Save the previous CRTC configuration
 		conn->saved = drmModeGetCrtc(drm_fd, conn->crtc_id);
 
 		// ret = drmModeSetCrtc(drm_fd, conn->crtc_id, 0, 0, 0, NULL, 0, NULL);
@@ -319,10 +296,10 @@ int main(void)
 		ret = drmModeSetCrtc(drm_fd, conn->crtc_id, conn->fb.id, 0, 0,
 			&conn->id, 1, &conn->mode);
 		if (ret < 0) {
-			printf("error drmModeSetCrtc: %d\n", ret);
+			printf("\033[31merror drmModeSetCrtc: %d\033[0m\n", ret);
 			if(ret == -EINVAL)
 			{
-				printf("\tcrtc_id is invalid: %d.\n", conn->crtc_id);
+				printf("\t\033[31mcrtc_id is invalid: %d.\033[0m\n", conn->crtc_id);
 			}
 			else
 			{
@@ -336,65 +313,6 @@ cleanup:
 	}
 
 	drmModeFreeResources(res);
-
-	// // Draw some colours for 5 seconds
-	// uint8_t colour[4] = { 0x00, 0x00, 0xff, 0x00 }; // B G R X
-	// int inc = 1, dec = 2;
-	// for (int i = 0; i < 60 * 5; ++i) {
-	// 	colour[inc] += 15;
-	// 	colour[dec] -= 15;
-
-	// 	if (colour[dec] == 0) {
-	// 		dec = inc;
-	// 		inc = (inc + 2) % 3;
-	// 	}
-
-	// 	for (struct connector *conn = conn_list; conn; conn = conn->next) {
-	// 		if (!conn->connected)
-	// 			continue;
-
-	// 		struct dumb_framebuffer *fb = &conn->fb;
-
-	// 		for (uint32_t y = 0; y < fb->height; ++y) {
-	// 			uint8_t *row = fb->data + fb->stride * y;
-
-	// 			for (uint32_t x = 0; x < fb->width; ++x) {
-	// 				row[x * 4 + 0] = colour[0];
-	// 				row[x * 4 + 1] = colour[1];
-	// 				row[x * 4 + 2] = colour[2];
-	// 				row[x * 4 + 3] = colour[3];
-	// 			}
-	// 		}
-	// 	}
-
-	// 	// Should give 60 FPS
-	// 	struct timespec ts = { .tv_nsec = 16666667 };
-	// 	nanosleep(&ts, NULL);
-	// }
-
-	// // Cleanup
-	// struct connector *conn = conn_list;
-	// while (conn) {
-	// 	if (conn->connected) {
-	// 		// Cleanup framebuffer
-	// 		munmap(conn->fb.data, conn->fb.size);
-	// 		drmModeRmFB(drm_fd, conn->fb.id);
-	// 		struct drm_mode_destroy_dumb destroy = { .handle = conn->fb.handle };
-	// 		drmIoctl(drm_fd, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy);
-
-	// 		// Restore the old CRTC
-	// 		drmModeCrtc *crtc = conn->saved;
-	// 		if (crtc) {
-	// 			drmModeSetCrtc(drm_fd, crtc->crtc_id, crtc->buffer_id,
-	// 				crtc->x, crtc->y, &conn->id, 1, &crtc->mode);
-	// 			drmModeFreeCrtc(crtc);
-	// 		}
-	// 	}
-
-	// 	struct connector *tmp = conn->next;
-	// 	free(conn);
-	// 	conn = tmp;
-	// }
 
 	close(drm_fd);
 }

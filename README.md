@@ -3,7 +3,7 @@ Simple program to show color on displays uing libdrm. Basic example for testing 
 
 
 Compile:
-gcc main.c util.c -I/usr/include/libdrm -ldrm
+gcc main.c -I/usr/include/libdrm -ldrm
 
 Materials used to prepare this code:
 Modetest application source: https://github.com/grate-driver/libdrm/blob/master/tests/modetest/modetest.c
