@@ -334,13 +334,12 @@ int main(void)
 
         printf("  Using mode %" PRIu32 "x%" PRIu32 "@%" PRIu32 "mHz\n", conn->width, conn->height, conn->rate);
 
-        int ret;
-        // int ret = drmSetMaster(drm_fd);
-        // if (ret)
-        // {
-        //     printf("\033[31mCould not get master role for DRM.\033[0m\n");
-        //     goto cleanup;
-        // }
+        int ret = drmSetMaster(drm_fd);
+        if (ret)
+        {
+            printf("\033[31mCould not get master role for DRM.\033[0m\n");
+            goto cleanup;
+        }
 
         if (!create_fb(drm_fd, conn))
         {
