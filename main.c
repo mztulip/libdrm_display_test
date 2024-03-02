@@ -286,7 +286,7 @@ int main(void)
     {
         uint32_t *plane_id_ptr = &plane_res->planes[i];
         // drmModePlane *drm_plane = plane->plane;
-        drmModePlane *drm_plane = drmModeGetPlane(drm_fd , plane_id_ptr[i]);
+        drmModePlane *drm_plane = drmModeGetPlane(drm_fd , *plane_id_ptr);
 
 		if (!drm_plane)
         {
@@ -298,6 +298,13 @@ int main(void)
 		       drm_plane->plane_id, drm_plane->crtc_id, drm_plane->fb_id,
 		       drm_plane->crtc_x, drm_plane->crtc_y, drm_plane->x, drm_plane->y,
 		       drm_plane->gamma_size, drm_plane->possible_crtcs);
+
+        if (!drm_plane->count_formats)
+        {
+            printf("\n plane formats not specified");
+            continue;
+        }
+			
 
         drmModeFreePlane(drm_plane);
     }
