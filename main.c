@@ -440,8 +440,10 @@ int main(void)
                 uint8_t *new_line_pixel = conn->drm_fb_data + conn->drm_fb.pitch * y;
                 for (uint32_t x = 0; x < conn->drm_fb.width; ++x)
                 {
-                    new_line_pixel[x * 4 + 0] = 0;//b
-					new_line_pixel[x * 4 + 1] = 0; //g
+                    // DRM_FORMAT_XRGB8888
+                    /// [31:0] x:R:G:B 8:8:8:8 little endian (info from drm_fourcc.h)
+                    new_line_pixel[x * 4 + 0] = 0;//B
+					new_line_pixel[x * 4 + 1] = 0; //G
 					new_line_pixel[x * 4 + 2] = 0xFF; //R
 					new_line_pixel[x * 4 + 3] = 0;
                 }
