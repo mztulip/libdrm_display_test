@@ -272,6 +272,38 @@ int main(void)
         printf("%d ", res->encoders[i]);
     }
 
+    drmModePlaneRes *plane_res = drmModeGetPlaneResources(drm_fd);
+
+    if (!plane_res)
+    {
+        perror("drmModeGetPlaneResources failed");
+        return 1;
+    }
+
+    printf("\nPlanes(%d):", plane_res->count_planes);
+    printf("\nid\tcrtc\tfb\tCRTC x,y\tx,y\tgamma size\tpossible crtcs");
+    for (int i = 0; i < plane_res->count_planes; i++) 
+    {
+        uint32_t *plane_id_ptr = &plane_res->planes[i];
+        // drmModePlane *drm_plane = plane->plane;
+        drmModePlane *drm_plane = drmModeGetPlane(drm_fd , plane_id_ptr[i]);
+
+		if (!drm_plane)
+        {
+            printf("\n get plane failed");
+            continue;
+        }
+
+		printf("\n%d\t%d\t%d\t%d,%d\t\t%d,%d\t%-8d\t0x%08x",
+		       drm_plane->plane_id, drm_plane->crtc_id, drm_plane->fb_id,
+		       drm_plane->crtc_x, drm_plane->crtc_y, drm_plane->x, drm_plane->y,
+		       drm_plane->gamma_size, drm_plane->possible_crtcs);
+
+        drmModeFreePlane(drm_plane);
+    }
+
+    drmModeFreePlaneResources(plane_res);
+
     struct connector *conn = NULL;
     conn = malloc(sizeof *conn);
     memset(conn, 0, sizeof *conn);
@@ -390,9 +422,9 @@ int main(void)
                 uint8_t *new_line_pixel = conn->drm_fb_data + conn->drm_fb.pitch * y;
                 for (uint32_t x = 0; x < conn->drm_fb.width; ++x)
                 {
-                    new_line_pixel[x * 4 + 0] = 0xFF;
-					new_line_pixel[x * 4 + 1] = 0;
-					new_line_pixel[x * 4 + 2] = 0;
+                    new_line_pixel[x * 4 + 0] = 0;//b
+					new_line_pixel[x * 4 + 1] = 0; //g
+					new_line_pixel[x * 4 + 2] = 0xFF; //R
 					new_line_pixel[x * 4 + 3] = 0;
                 }
             }
