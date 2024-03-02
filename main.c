@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,6 +12,8 @@
 #include <unistd.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>
+
+bool main_loop_active = true;
 
 const char *conn_str(uint32_t conn_type)
 {
@@ -174,8 +177,20 @@ error_dumb:;
     return false;
 }
 
+static void catch_function(int signo) 
+{
+    printf("Signal received: %s\n", strsignal(signo));
+    main_loop_active = false;
+}
+
 int main(void)
 {
+    if (signal(SIGINT, catch_function) == SIG_ERR)
+    {
+        fprintf(stderr, "An error occurred while setting a signal handler.\n", stderr);
+        return EXIT_FAILURE;
+    }
+
     int drm_fd = open("/dev/dri/card1", O_RDWR | O_NONBLOCK);
     if (drm_fd < 0)
     {
@@ -236,6 +251,8 @@ int main(void)
     {
         printf("%d ", res->encoders[i]);
     }
+
+    struct connector *conn = NULL;
 
     for (int i = 0; i < res->count_connectors; ++i)
     {
@@ -340,6 +357,31 @@ int main(void)
         drmModeFreeConnector(drm_conn);
     }
 
+    while (main_loop_active)
+    {
+    }
+
+    printf("Restoring connector\n");
+    if (conn)
+    {
+        if (conn->connected)
+        {
+            munmap(conn->fb.data, conn->fb.size);
+            drmModeRmFB(drm_fd, conn->fb.id);
+            struct drm_mode_destroy_dumb destroy = {.handle = conn->fb.handle};
+            drmIoctl(drm_fd, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy);
+
+            drmModeCrtc *crtc = conn->saved;
+            if (crtc)
+            {
+                drmModeSetCrtc(drm_fd, crtc->crtc_id, crtc->buffer_id, crtc->x, crtc->y, &conn->id, 1, &crtc->mode);
+                drmModeFreeCrtc(crtc);
+            }
+        }
+
+        free(conn);
+    }
+
     drmModeFreeResources(res);
 
     close(drm_fd);
@@ -347,7 +389,7 @@ int main(void)
 
 int refresh_rate(drmModeModeInfo *mode)
 {
-    int res = (mode->clock * 1000000 LL / mode->htotal + mode->vtotal / 2) / mode->vtotal;
+    int res = (mode->clock * 1000000LL / mode->htotal + mode->vtotal / 2) / mode->vtotal;
 
     if (mode->flags & DRM_MODE_FLAG_INTERLACE)
         res *= 2;
