@@ -203,6 +203,15 @@ static void catch_function(int signo)
     main_loop_active = false;
 }
 
+static void dump_fourcc(uint32_t fourcc)
+{
+	printf(" %c%c%c%c",
+		fourcc,
+		fourcc >> 8,
+		fourcc >> 16,
+		fourcc >> 24);
+}
+
 int main(void)
 {
     if (signal(SIGINT, catch_function) == SIG_ERR)
@@ -285,7 +294,6 @@ int main(void)
     for (int i = 0; i < plane_res->count_planes; i++) 
     {
         uint32_t *plane_id_ptr = &plane_res->planes[i];
-        // drmModePlane *drm_plane = plane->plane;
         drmModePlane *drm_plane = drmModeGetPlane(drm_fd , *plane_id_ptr);
 
 		if (!drm_plane)
@@ -304,7 +312,10 @@ int main(void)
             printf("\n plane formats not specified");
             continue;
         }
-			
+
+        printf("\n  formats:");
+		for (int j = 0; j < drm_plane->count_formats; j++)
+			dump_fourcc(drm_plane->formats[j]);	
 
         drmModeFreePlane(drm_plane);
     }
