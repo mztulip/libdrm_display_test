@@ -58,17 +58,6 @@ const char *conn_str(uint32_t conn_type)
     }
 }
 
-struct dumb_framebuffer
-{
-    uint32_t id;
-    uint32_t width;
-    uint32_t height;
-    uint32_t handle;
-    uint64_t size;
-
-    uint8_t *data;
-};
-
 struct connector
 {
     uint32_t id;
@@ -84,7 +73,9 @@ struct connector
     uint32_t height;
     uint32_t rate;
 
-    struct dumb_framebuffer fb;
+    uint32_t drm_fb_id;  
+	struct drm_mode_create_dumb drm_fb;
+	uint8_t *drm_fb_data;
 };
 
 int refresh_rate(drmModeModeInfo *mode);
@@ -119,36 +110,46 @@ static uint32_t find_crtc(int drm_fd, drmModeRes *res, drmModeConnector *conn, u
     return 0;
 }
 
-bool create_fb(int drm_fd, uint32_t width, uint32_t height, struct dumb_framebuffer *fb)
+bool create_fb(int drm_fd, struct connector *conn)
 {
     int ret;
 
-    struct drm_mode_create_dumb created_buffer = {
-        .width = width,
-        .height = height,
-        .bpp = 32,
-    };
+    conn->drm_fb.width = conn->width;
+    conn->drm_fb.height = conn->height;
+    conn->drm_fb.bpp = 32;
 
-    ret = drmIoctl(drm_fd, DRM_IOCTL_MODE_CREATE_DUMB, &created_buffer);
+    ret = drmIoctl(drm_fd, DRM_IOCTL_MODE_CREATE_DUMB, &conn->drm_fb);
     if (ret < 0)
     {
         perror("DRM_IOCTL_MODE_CREATE_DUMB");
         return false;
     }
 
-    fb->height = created_buffer.height;
-    fb->width = created_buffer.width;
-    fb->handle = created_buffer.handle;
-    fb->size = created_buffer.size;
+    printf("Created framebuffer: \n");
+    printf("\t height:%d\n", conn->drm_fb.height);
+    printf("\t width:%d\n", conn->drm_fb.width);
+    printf("\t bpp:%d\n", conn->drm_fb.bpp);
+    printf("\t flags:%d\n", conn->drm_fb.flags);
+    printf("\t handle:%d\n", conn->drm_fb.handle);
+    printf("\t pitch:%d\n", conn->drm_fb.pitch);
+    printf("\t size:%d\n", conn->drm_fb.size);
 
-    ret = drmModeAddFB(drm_fd, width, height, 24, 32, created_buffer.pitch, created_buffer.handle, &fb->id);
+    ret = drmModeAddFB(drm_fd, 
+        conn->drm_fb.width, 
+        conn->drm_fb.height, 
+        24, 
+        conn->drm_fb.bpp, 
+        conn->drm_fb.pitch, 
+        conn->drm_fb.handle, 
+        &conn->drm_fb_id);
+
     if (ret)
     {
         printf("Could not add framebuffer to drm (err=%d)\n", ret);
         goto error_dumb;
     }
 
-    struct drm_mode_map_dumb map = {.handle = fb->handle};
+    struct drm_mode_map_dumb map = {.handle = conn->drm_fb.handle};
 
     ret = drmIoctl(drm_fd, DRM_IOCTL_MODE_MAP_DUMB, &map);
     if (ret < 0)
@@ -157,21 +158,22 @@ bool create_fb(int drm_fd, uint32_t width, uint32_t height, struct dumb_framebuf
         goto error_fb;
     }
 
-    fb->data = mmap(0, fb->size, PROT_READ | PROT_WRITE, MAP_SHARED, drm_fd, map.offset);
-    if (!fb->data)
+    conn->drm_fb_data = mmap(0, conn->drm_fb.size, PROT_READ | PROT_WRITE, MAP_SHARED, drm_fd, map.offset);
+    if (!conn->drm_fb_data)
     {
         perror("mmap failed");
         goto error_fb;
     }
 
-    memset(fb->data, 0xff, fb->size);
+    //Buffer represents white screen
+    memset(conn->drm_fb_data, 0xff, conn->drm_fb.size);
 
     return true;
 
 error_fb:
-    drmModeRmFB(drm_fd, fb->id);
+    drmModeRmFB(drm_fd, conn->drm_fb_id);
 error_dumb:;
-    struct drm_mode_destroy_dumb destroy = {.handle = fb->handle};
+    struct drm_mode_destroy_dumb destroy = {.handle = conn->drm_fb.handle};
 
     drmIoctl(drm_fd, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy);
     return false;
@@ -319,7 +321,7 @@ int main(void)
             goto cleanup;
         }
 
-        if (!create_fb(drm_fd, conn->width, conn->height, &conn->fb))
+        if (!create_fb(drm_fd, conn))
         {
             conn->connected = false;
             goto cleanup;
@@ -327,17 +329,17 @@ int main(void)
 
         // drmDropMaster(drm_fd);
 
-        printf("  Created frambuffer with ID %" PRIu32 "\n", conn->fb.id);
+        printf("  Created frambuffer with ID %" PRIu32 "\n", conn->drm_fb_id);
 
         conn->saved = drmModeGetCrtc(drm_fd, conn->crtc_id);
 
-        // ret = drmModeSetCrtc(drm_fd, conn->crtc_id, 0, 0, 0, NULL, 0, NULL);
-        // if (ret < 0) {
-        // 	printf("error null drmModeSetCrtc: %d\n", ret);
-        // 	goto cleanup;
-        // }
+        ret = drmModeSetCrtc(drm_fd, conn->crtc_id, 0, 0, 0, NULL, 0, NULL);
+        if (ret < 0) {
+        	printf("error null drmModeSetCrtc: %d\n", ret);
+        	goto cleanup;
+        }
 
-        ret = drmModeSetCrtc(drm_fd, conn->crtc_id, conn->fb.id, 0, 0, &conn->id, 1, &conn->mode);
+        ret = drmModeSetCrtc(drm_fd, conn->crtc_id, conn->drm_fb_id, 0, 0, &conn->id, 1, &conn->mode);
         if (ret < 0)
         {
             printf("\033[31merror drmModeSetCrtc: %d\033[0m\n", ret);
@@ -357,18 +359,29 @@ int main(void)
         drmModeFreeConnector(drm_conn);
     }
 
-    while (main_loop_active)
-    {
-    }
-
-    printf("Restoring connector\n");
+    
     if (conn)
     {
         if (conn->connected)
         {
-            munmap(conn->fb.data, conn->fb.size);
-            drmModeRmFB(drm_fd, conn->fb.id);
-            struct drm_mode_destroy_dumb destroy = {.handle = conn->fb.handle};
+
+            for (uint32_t y = 0; y < conn->drm_fb.height; ++y)
+            {
+                for (uint32_t x = 0; x < conn->drm_fb.width; ++x)
+                {
+
+                }
+            }
+
+            while (main_loop_active)
+            {
+
+            }
+
+            printf("Restoring connector\n");
+            munmap(conn->drm_fb_data, conn->drm_fb.size);
+            drmModeRmFB(drm_fd, conn->drm_fb_id);
+            struct drm_mode_destroy_dumb destroy = {.handle = conn->drm_fb.handle};
             drmIoctl(drm_fd, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy);
 
             drmModeCrtc *crtc = conn->saved;
