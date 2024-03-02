@@ -134,14 +134,32 @@ bool create_fb(int drm_fd, struct connector *conn)
     printf("\t pitch:%d\n", conn->drm_fb.pitch);
     printf("\t size:%d\n", conn->drm_fb.size);
 
-    ret = drmModeAddFB(drm_fd, 
+    // ret = drmModeAddFB(drm_fd, 
+    //     conn->drm_fb.width, 
+    //     conn->drm_fb.height, 
+    //     24, 
+    //     conn->drm_fb.bpp, 
+    //     conn->drm_fb.pitch, 
+    //     conn->drm_fb.handle, 
+    //     &conn->drm_fb_id);
+
+    uint32_t handles[4] = { conn->drm_fb.handle };
+	uint32_t pitches[4] = { conn->drm_fb.pitch };
+	uint32_t offsets[4] = { 0 };
+
+	ret = drmModeAddFB2(drm_fd, 
         conn->drm_fb.width, 
         conn->drm_fb.height, 
-        24, 
-        conn->drm_fb.bpp, 
-        conn->drm_fb.pitch, 
-        conn->drm_fb.handle, 
-        &conn->drm_fb_id);
+        DRM_FORMAT_XRGB8888,
+		handles,
+        pitches,
+        offsets,
+        &conn->drm_fb_id, 0);
+
+	if (ret < 0) {
+		perror("drmModeAddFB2");
+		goto error_dumb;
+	}
 
     if (ret)
     {
@@ -193,10 +211,11 @@ int main(void)
         return EXIT_FAILURE;
     }
 
-    int drm_fd = open("/dev/dri/card1", O_RDWR | O_NONBLOCK);
+    char device_str[] = "/dev/dri/card1";
+    int drm_fd = open(device_str, O_RDWR | O_NONBLOCK);
     if (drm_fd < 0)
     {
-        perror("/dev/dri/card0");
+        perror(device_str);
         return 1;
     }
 
@@ -207,7 +226,6 @@ int main(void)
         return 1;
     }
 
-    struct connector *conn_list = NULL;
     uint32_t taken_crtcs = 0;
 
     printf("Connector count: %d \n", res->count_connectors);
@@ -255,6 +273,14 @@ int main(void)
     }
 
     struct connector *conn = NULL;
+    conn = malloc(sizeof *conn);
+    memset(conn, 0, sizeof *conn);
+
+    if (!conn)
+    {
+        perror("malloc");
+        goto exit;
+    }
 
     for (int i = 0; i < res->count_connectors; ++i)
     {
@@ -265,29 +291,23 @@ int main(void)
             continue;
         }
 
-        struct connector *conn = malloc(sizeof *conn);
-        if (!conn)
+        printf("\nFound connector %s: ", conn_str(drm_conn->connector_type));
+
+        if (drm_conn->connection == DRM_MODE_CONNECTED)
         {
-            perror("malloc");
-            goto cleanup;
+            printf("Status: Connected\n");
         }
-
-        conn->id = drm_conn->connector_id;
-        snprintf(conn->name, sizeof conn->name, "%s-%" PRIu32, conn_str(drm_conn->connector_type),
-                 drm_conn->connector_type_id);
-        conn->connected = drm_conn->connection == DRM_MODE_CONNECTED;
-
-        printf("\nFound connector %s: ", conn->name);
-
-        if (!conn->connected)
+        else
         {
             printf("Status:  Disconnected\n");
             goto cleanup;
         }
-        else
-        {
-            printf("Status: Connected\n");
-        }
+
+        conn->id = drm_conn->connector_id;
+        snprintf(conn->name, sizeof conn->name,
+            "%s-%" PRIu32, conn_str(drm_conn->connector_type),
+                 drm_conn->connector_type_id);
+        conn->connected = true;
 
         if (drm_conn->count_modes == 0)
         {
@@ -314,30 +334,28 @@ int main(void)
 
         printf("  Using mode %" PRIu32 "x%" PRIu32 "@%" PRIu32 "mHz\n", conn->width, conn->height, conn->rate);
 
-        int ret = drmSetMaster(drm_fd);
-        if (ret)
-        {
-            printf("\033[31mCould not get master role for DRM.\033[0m\n");
-            goto cleanup;
-        }
+        int ret;
+        // int ret = drmSetMaster(drm_fd);
+        // if (ret)
+        // {
+        //     printf("\033[31mCould not get master role for DRM.\033[0m\n");
+        //     goto cleanup;
+        // }
 
         if (!create_fb(drm_fd, conn))
         {
-            conn->connected = false;
             goto cleanup;
         }
-
-        // drmDropMaster(drm_fd);
 
         printf("  Created frambuffer with ID %" PRIu32 "\n", conn->drm_fb_id);
 
         conn->saved = drmModeGetCrtc(drm_fd, conn->crtc_id);
 
-        ret = drmModeSetCrtc(drm_fd, conn->crtc_id, 0, 0, 0, NULL, 0, NULL);
-        if (ret < 0) {
-        	printf("error null drmModeSetCrtc: %d\n", ret);
-        	goto cleanup;
-        }
+        // ret = drmModeSetCrtc(drm_fd, conn->crtc_id, 0, 0, 0, NULL, 0, NULL);
+        // if (ret < 0) {
+        // 	printf("error null drmModeSetCrtc: %d\n", ret);
+        // 	goto cleanup;
+        // }
 
         ret = drmModeSetCrtc(drm_fd, conn->crtc_id, conn->drm_fb_id, 0, 0, &conn->id, 1, &conn->mode);
         if (ret < 0)
@@ -359,6 +377,9 @@ int main(void)
         drmModeFreeConnector(drm_conn);
     }
 
+    drmModeFreeResources(res);
+
+    printf("\nSelected connector %s: ", conn->name);
     
     if (conn)
     {
@@ -367,9 +388,13 @@ int main(void)
 
             for (uint32_t y = 0; y < conn->drm_fb.height; ++y)
             {
+                uint8_t *new_line_pixel = conn->drm_fb_data + conn->drm_fb.pitch * y;
                 for (uint32_t x = 0; x < conn->drm_fb.width; ++x)
                 {
-
+                    new_line_pixel[x * 4 + 0] = 0xFF;
+					new_line_pixel[x * 4 + 1] = 0;
+					new_line_pixel[x * 4 + 2] = 0;
+					new_line_pixel[x * 4 + 3] = 0;
                 }
             }
 
@@ -381,6 +406,7 @@ int main(void)
             printf("Restoring connector\n");
             munmap(conn->drm_fb_data, conn->drm_fb.size);
             drmModeRmFB(drm_fd, conn->drm_fb_id);
+            
             struct drm_mode_destroy_dumb destroy = {.handle = conn->drm_fb.handle};
             drmIoctl(drm_fd, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy);
 
@@ -390,13 +416,15 @@ int main(void)
                 drmModeSetCrtc(drm_fd, crtc->crtc_id, crtc->buffer_id, crtc->x, crtc->y, &conn->id, 1, &crtc->mode);
                 drmModeFreeCrtc(crtc);
             }
+            drmDropMaster(drm_fd);
         }
 
-        free(conn);
+        
     }
 
-    drmModeFreeResources(res);
+    exit:
 
+    free(conn);
     close(drm_fd);
 }
 
