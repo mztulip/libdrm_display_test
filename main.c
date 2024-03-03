@@ -150,7 +150,7 @@ bool create_fb(int drm_fd, struct connector *conn)
 	ret = drmModeAddFB2(drm_fd, 
         conn->drm_fb.width, 
         conn->drm_fb.height, 
-        DRM_FORMAT_XRGB8888,
+        DRM_FORMAT_BGR888,
 		handles,
         pitches,
         offsets,
@@ -214,6 +214,7 @@ static void dump_fourcc(uint32_t fourcc)
 
 int main(void)
 {
+    bool error_occured = false;
     if (signal(SIGINT, catch_function) == SIG_ERR)
     {
         fprintf(stderr, "An error occurred while setting a signal handler.\n", stderr);
@@ -277,6 +278,50 @@ int main(void)
     for (int i = 0; i < res->count_crtcs; i++)
     {
         printf("%d ", res->crtcs[i]);
+    }
+
+    for (int i = 0; i < res->count_crtcs; i++)
+    {
+        drmModeCrtcPtr drm_crtc = drmModeGetCrtc(drm_fd, res->crtcs[i]);
+        if (!drm_crtc)
+        {
+            printf("\n drmModeGetCrtc failed");
+            continue;
+        }
+        printf("\nbuffer_id: %d, x: %d, y:%d, width: %d, height: %d, mode_valid: %d, gamma_size:%d", 
+            drm_crtc->buffer_id,
+            drm_crtc->x,
+            drm_crtc->y,
+            drm_crtc->width,
+            drm_crtc->height,
+            drm_crtc->mode_valid,
+            drm_crtc->gamma_size
+        );
+
+        printf("\nmodeinfo clock:%d, vrefresh:%d, flags: %d, type: %d, name:%s",
+            drm_crtc->mode.clock,
+            drm_crtc->mode.vrefresh,
+            drm_crtc->mode.flags,
+            drm_crtc->mode.type,
+            drm_crtc->mode.name
+        );
+
+        printf("\n hdisplay:%d, hsync_start: %d, hsync_end: %d, htotal:%d, hskew:%d",
+            
+            drm_crtc->mode.hdisplay,
+            drm_crtc->mode.hsync_start,
+            drm_crtc->mode.hsync_end,
+            drm_crtc->mode.htotal,
+            drm_crtc->mode.hskew
+        );
+
+        printf("\n vdisplay:%d, vsync_start:%d, vsync_end:%d, vtotal:%d, vscan:%d",
+            drm_crtc->mode.vdisplay,
+            drm_crtc->mode.vsync_start,
+            drm_crtc->mode.vsync_end,
+            drm_crtc->mode.vtotal,
+            drm_crtc->mode.vscan
+        );
     }
 
     printf("\nencoders: ");
@@ -392,11 +437,13 @@ int main(void)
         if (ret)
         {
             printf("\033[31mCould not get master role for DRM.\033[0m\n");
+            error_occured = true;
             goto cleanup;
         }
 
         if (!create_fb(drm_fd, conn))
         {
+            error_occured = true;
             goto cleanup;
         }
 
@@ -413,6 +460,7 @@ int main(void)
         ret = drmModeSetCrtc(drm_fd, conn->crtc_id, conn->drm_fb_id, 0, 0, &conn->id, 1, &conn->mode);
         if (ret < 0)
         {
+            error_occured = true;
             printf("\033[31merror drmModeSetCrtc: %d\033[0m\n", ret);
             if (ret == -EINVAL)
             {
@@ -446,14 +494,16 @@ int main(void)
                 {
                     // DRM_FORMAT_XRGB8888
                     /// [31:0] x:R:G:B 8:8:8:8 little endian (info from drm_fourcc.h)
-                    new_line_pixel[x * 4 + 0] = 0;//B
-					new_line_pixel[x * 4 + 1] = 0; //G
-					new_line_pixel[x * 4 + 2] = 0xFF; //R
-					new_line_pixel[x * 4 + 3] = 0;
+		    ///
+		    //BGR888 = BG24
+                    new_line_pixel[x * 3 + 0] = 0;//R
+					new_line_pixel[x * 3 + 1] = 0; //G
+					new_line_pixel[x * 3 + 2] = 0xFF; //B
+					//new_line_pixel[x * 4 + 3] = 0;
                 }
             }
 
-            while (main_loop_active)
+            while (main_loop_active && error_occured == false)
             {
 
             }
