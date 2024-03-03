@@ -111,13 +111,26 @@ static uint32_t find_crtc(int drm_fd, drmModeRes *res, drmModeConnector *conn, u
     return 0;
 }
 
-bool create_fb(int drm_fd, struct connector *conn)
+bool create_fb(int drm_fd, struct connector *conn, uint32_t pixel_format)
 {
     int ret;
 
+    conn->drm_fb_pixel_format = pixel_format;
     conn->drm_fb.width = conn->width;
     conn->drm_fb.height = conn->height;
-    conn->drm_fb.bpp = 24;
+    if (pixel_format == DRM_FORMAT_XRGB8888)
+    {
+        conn->drm_fb.bpp = 32;
+    }
+    else if(pixel_format == DRM_FORMAT_BGR888)
+    {
+        conn->drm_fb.bpp = 24;
+    }
+    else
+    {
+        printf("\033[31mapplication unsupported format\033[0m\n");
+        return false;
+    }
 
     ret = drmIoctl(drm_fd, DRM_IOCTL_MODE_CREATE_DUMB, &conn->drm_fb);
     if (ret < 0)
@@ -442,7 +455,7 @@ int main(void)
             goto cleanup;
         }
 
-        if (!create_fb(drm_fd, conn))
+        if (!create_fb(drm_fd, conn, DRM_FORMAT_BGR888))
         {
             error_occured = true;
             goto cleanup;
