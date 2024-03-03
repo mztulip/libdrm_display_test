@@ -237,7 +237,7 @@ int main(void)
         return EXIT_FAILURE;
     }
 
-    char device_str[] = "/dev/dri/card0";
+    char device_str[] = "/dev/dri/card1";
     int drm_fd = open(device_str, O_RDWR | O_NONBLOCK);
     if (drm_fd < 0)
     {
@@ -457,7 +457,8 @@ int main(void)
             goto cleanup;
         }
 
-        if (!create_fb(drm_fd, conn, DRM_FORMAT_BGR888))
+        if (!create_fb(drm_fd, conn, DRM_FORMAT_XRGB8888))
+        // if (!create_fb(drm_fd, conn, DRM_FORMAT_BGR888))
         {
             error_occured = true;
             goto cleanup;
@@ -502,31 +503,33 @@ int main(void)
     {
         if (conn->connected)
         {
-
-            for (uint32_t y = 0; y < conn->drm_fb.height; ++y)
+            if(conn->drm_fb_id != 0)
             {
-                uint8_t *new_line_pixel = conn->drm_fb_data + conn->drm_fb.pitch * y;
-                for (uint32_t x = 0; x < conn->drm_fb.width; ++x)
+                for (uint32_t y = 0; y < conn->drm_fb.height; ++y)
                 {
-                    uint8_t red = 0xff;
-                    uint8_t blue = 0;
-                    uint8_t green = 0;
-                    if(conn->drm_fb_pixel_format == DRM_FORMAT_BGR888)
+                    uint8_t *new_line_pixel = conn->drm_fb_data + conn->drm_fb.pitch * y;
+                    for (uint32_t x = 0; x < conn->drm_fb.width; ++x)
                     {
-                        //BGR888 = BG24
-                        new_line_pixel[x * 3 + 0] = red;
-                        new_line_pixel[x * 3 + 1] = green;
-                        new_line_pixel[x * 3 + 2] = blue;
+                        uint8_t red = 0xff;
+                        uint8_t blue = 0;
+                        uint8_t green = 0;
+                        if(conn->drm_fb_pixel_format == DRM_FORMAT_BGR888)
+                        {
+                            //BGR888 = BG24
+                            new_line_pixel[x * 3 + 0] = red;
+                            new_line_pixel[x * 3 + 1] = green;
+                            new_line_pixel[x * 3 + 2] = blue;
+                        }
+                        else if(conn->drm_fb_pixel_format == DRM_FORMAT_XRGB8888)
+                        {
+                            /// [31:0] x:R:G:B 8:8:8:8 little endian (info from drm_fourcc.h)
+                            new_line_pixel[x * 4 + 0] = blue;
+                            new_line_pixel[x * 4 + 1] = green;
+                            new_line_pixel[x * 4 + 2] = red;
+                            new_line_pixel[x * 4 + 3] = 0;
+                        }
+            
                     }
-                    else if(conn->drm_fb_pixel_format == DRM_FORMAT_XRGB8888)
-                    {
-                        /// [31:0] x:R:G:B 8:8:8:8 little endian (info from drm_fourcc.h)
-                        // new_line_pixel[x * 4 + 0] = blue;
-                        // new_line_pixel[x * 4 + 1] = green;
-                        // new_line_pixel[x * 4 + 2] = red;
-                        // new_line_pixel[x * 4 + 3] = 0;
-                    }
-		
                 }
             }
 
@@ -535,19 +538,23 @@ int main(void)
 
             }
 
-            printf("Restoring connector\n");
-            munmap(conn->drm_fb_data, conn->drm_fb.size);
-            drmModeRmFB(drm_fd, conn->drm_fb_id);
-            
-            struct drm_mode_destroy_dumb destroy = {.handle = conn->drm_fb.handle};
-            drmIoctl(drm_fd, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy);
-
-            drmModeCrtc *crtc = conn->saved;
-            if (crtc)
+            if(conn->drm_fb_id != 0)
             {
-                drmModeSetCrtc(drm_fd, crtc->crtc_id, crtc->buffer_id, crtc->x, crtc->y, &conn->id, 1, &crtc->mode);
-                drmModeFreeCrtc(crtc);
+                printf("Restoring connector\n");
+                munmap(conn->drm_fb_data, conn->drm_fb.size);
+                drmModeRmFB(drm_fd, conn->drm_fb_id);
+                
+                struct drm_mode_destroy_dumb destroy = {.handle = conn->drm_fb.handle};
+                drmIoctl(drm_fd, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy);
+
+                drmModeCrtc *crtc = conn->saved;
+                if (crtc)
+                {
+                    drmModeSetCrtc(drm_fd, crtc->crtc_id, crtc->buffer_id, crtc->x, crtc->y, &conn->id, 1, &crtc->mode);
+                    drmModeFreeCrtc(crtc);
+                }
             }
+            
             drmDropMaster(drm_fd);
         }
 
@@ -555,8 +562,9 @@ int main(void)
     }
 
     exit:
-
+    printf("\nconnector free");
     free(conn);
+    printf("\ndrm_fd close\n");
     close(drm_fd);
 }
 
