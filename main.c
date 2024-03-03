@@ -118,6 +118,7 @@ bool create_fb(int drm_fd, struct connector *conn, uint32_t pixel_format)
     conn->drm_fb_pixel_format = pixel_format;
     conn->drm_fb.width = conn->width;
     conn->drm_fb.height = conn->height;
+
     if (pixel_format == DRM_FORMAT_XRGB8888)
     {
         conn->drm_fb.bpp = 32;
@@ -131,6 +132,7 @@ bool create_fb(int drm_fd, struct connector *conn, uint32_t pixel_format)
         printf("\033[31mapplication unsupported format\033[0m\n");
         return false;
     }
+    
 
     ret = drmIoctl(drm_fd, DRM_IOCTL_MODE_CREATE_DUMB, &conn->drm_fb);
     if (ret < 0)
@@ -164,7 +166,7 @@ bool create_fb(int drm_fd, struct connector *conn, uint32_t pixel_format)
 	ret = drmModeAddFB2(drm_fd, 
         conn->drm_fb.width, 
         conn->drm_fb.height, 
-        DRM_FORMAT_BGR888,
+        pixel_format,
 		handles,
         pitches,
         offsets,
@@ -506,14 +508,25 @@ int main(void)
                 uint8_t *new_line_pixel = conn->drm_fb_data + conn->drm_fb.pitch * y;
                 for (uint32_t x = 0; x < conn->drm_fb.width; ++x)
                 {
-                    // DRM_FORMAT_XRGB8888
-                    /// [31:0] x:R:G:B 8:8:8:8 little endian (info from drm_fourcc.h)
-		    ///
-		    //BGR888 = BG24
-                    new_line_pixel[x * 3 + 0] = 0;//R
-					new_line_pixel[x * 3 + 1] = 0; //G
-					new_line_pixel[x * 3 + 2] = 0xFF; //B
-					//new_line_pixel[x * 4 + 3] = 0;
+                    uint8_t red = 0xff;
+                    uint8_t blue = 0;
+                    uint8_t green = 0;
+                    if(conn->drm_fb_pixel_format == DRM_FORMAT_BGR888)
+                    {
+                        //BGR888 = BG24
+                        new_line_pixel[x * 3 + 0] = red;
+                        new_line_pixel[x * 3 + 1] = green;
+                        new_line_pixel[x * 3 + 2] = blue;
+                    }
+                    else if(conn->drm_fb_pixel_format == DRM_FORMAT_XRGB8888)
+                    {
+                        /// [31:0] x:R:G:B 8:8:8:8 little endian (info from drm_fourcc.h)
+                        // new_line_pixel[x * 4 + 0] = blue;
+                        // new_line_pixel[x * 4 + 1] = green;
+                        // new_line_pixel[x * 4 + 2] = red;
+                        // new_line_pixel[x * 4 + 3] = 0;
+                    }
+		
                 }
             }
 
