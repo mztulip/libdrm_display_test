@@ -76,6 +76,7 @@ struct connector
     uint32_t drm_fb_id;  
 	struct drm_mode_create_dumb drm_fb;
 	uint8_t *drm_fb_data;
+    uint32_t drm_fb_pixel_format;
 };
 
 int refresh_rate(drmModeModeInfo *mode);
@@ -116,7 +117,7 @@ bool create_fb(int drm_fd, struct connector *conn)
 
     conn->drm_fb.width = conn->width;
     conn->drm_fb.height = conn->height;
-    conn->drm_fb.bpp = 32;
+    conn->drm_fb.bpp = 24;
 
     ret = drmIoctl(drm_fd, DRM_IOCTL_MODE_CREATE_DUMB, &conn->drm_fb);
     if (ret < 0)
@@ -221,7 +222,7 @@ int main(void)
         return EXIT_FAILURE;
     }
 
-    char device_str[] = "/dev/dri/card1";
+    char device_str[] = "/dev/dri/card0";
     int drm_fd = open(device_str, O_RDWR | O_NONBLOCK);
     if (drm_fd < 0)
     {
